@@ -8,15 +8,17 @@ import {
     ActivityIndicator,
     Alert,
 } from "react-native";
+import { useNavigation } from '@react-navigation/native';
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from 'expo-web-browser';
 import axios from "axios";
 
 WebBrowser.maybeCompleteAuthSession();
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen() {
     const [userInfo, setUserInfo] = useState(null);
     const [loading, setLoading] = useState(false);
+    const navigation = useNavigation();
 
     // --- Google Auth Configuration ---
     const [request, response, promptAsync] = Google.useAuthRequest({
@@ -107,7 +109,8 @@ export default function LoginScreen({ navigation }) {
                 <TouchableOpacity
                     style={styles.googleButton}
                     disabled={!request}
-                    onPress={() => promptAsync()}
+                    //onPress={() => promptAsync()}
+                    onPress={() => navigation.navigate('Dashboard')}
                 >
                     <Image
                         source={{ uri: "https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" }}
@@ -172,4 +175,3 @@ const styles = StyleSheet.create({
         color: "#333"
     },
 });
-
