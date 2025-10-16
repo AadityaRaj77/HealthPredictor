@@ -1,8 +1,8 @@
-// App.js
 import 'react-native-gesture-handler';
 import * as React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import SignupScreen from "./screens/SignupScreen";
 import LoginScreen from './screens/LoginScreen';
 import DashboardScreen from './screens/DashboardScreen';
 
@@ -17,6 +17,7 @@ export default function App() {
           component={LoginScreen}
           options={{ headerShown: false }}
         />
+        <Stack.Screen name="Signup" component={SignupScreen} />
         <Stack.Screen
           name="Dashboard"
           component={DashboardScreen}
