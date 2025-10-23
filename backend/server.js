@@ -7,7 +7,11 @@ const jwt = require("jsonwebtoken");
 
 dotenv.config();
 const app = express();
-app.use(cors());
+//app.use(cors());
+app.use(cors({
+    origin: "*", // for dev only
+    methods: ["GET", "POST"],
+}));
 app.use(express.json());
 
 app.get("/", (req, res) => res.send("Server is running..."));
@@ -17,8 +21,8 @@ mongoose.connect(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/healthpredi
     useNewUrlParser: true,
     useUnifiedTopology: true,
 })
-    .then(() => console.log("✅ MongoDB connected"))
-    .catch(err => console.log("❌ MongoDB error:", err));
+    .then(() => console.log("MongoDB connected"))
+    .catch(err => console.log("MongoDB error:", err));
 
 // User model
 const userSchema = new mongoose.Schema({
@@ -60,13 +64,13 @@ app.post("/login", async (req, res) => {
 
         const token = jwt.sign({ id: user._id, username: user.username }, process.env.JWT_SECRET || "devsecret", { expiresIn: "1d" });
         return res.json({ success: true, token, username: user.username });
-    } catch (err) {
+    }
+    catch (err) {
         console.error("Login error:", err);
         return res.status(500).json({ error: "Server error" });
     }
 });
 
-// Example protected route
 function verifyToken(req, res, next) {
     const authHeader = req.headers["authorization"];
     const token = authHeader && authHeader.split(" ")[1];
@@ -83,6 +87,5 @@ app.get("/dashboard", verifyToken, (req, res) => {
     res.json({ message: "Welcome to dashboard", user: req.user });
 });
 
-// Listen on all interfaces so phone can reach it
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, "0.0.0.0", () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));

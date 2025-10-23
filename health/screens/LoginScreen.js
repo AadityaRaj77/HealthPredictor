@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityInd
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const BASE_URL = "http://192.168.1.8:5000"; // <- CHANGE to your PC IPv4
+const BASE_URL = "http://192.168.0.110:5000";
 
 export default function LoginScreen({ navigation }) {
     const [username, setUsername] = useState("");
@@ -20,10 +20,12 @@ export default function LoginScreen({ navigation }) {
             await AsyncStorage.setItem("token", res.data.token);
             Alert.alert("Login Success", `Welcome ${res.data.username}`);
             navigation.replace("Dashboard");
-        } catch (err) {
+        }
+        catch (err) {
             console.error("Login error:", err.response?.data || err.message);
             Alert.alert("Login Failed", err.response?.data?.message || "Something went wrong");
-        } finally {
+        }
+        finally {
             setLoading(false);
         }
     };

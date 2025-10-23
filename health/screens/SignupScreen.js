@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import axios from "axios";
 
-const BASE_URL = "http://192.168.1.8:5000"; // <- CHANGE to your PC IPv4
+const BASE_URL = "http://192.168.0.110:5000"; // <- CHANGE to your PC IPv4
 
 export default function SignupScreen({ navigation }) {
     const [username, setUsername] = useState("");
