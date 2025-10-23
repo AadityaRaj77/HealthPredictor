@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Animated, ActivityIndicator } from 'react-native';
 import moment from 'moment';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const DashboardScreen = () => {
+const DashboardScreen = ({ navigation }) => {
     const [currentDate, setCurrentDate] = useState('');
     const [currentTime, setCurrentTime] = useState('');
     const [healthStatus, setHealthStatus] = useState('Good');
@@ -13,6 +14,8 @@ const DashboardScreen = () => {
     const [lastNightSleep, setLastNightSleep] = useState('');
     const [qualitySleep, setQualitySleep] = useState('');
     const [screenTimeBeforeBed, setScreenTimeBeforeBed] = useState('');
+    const [tips, setTips] = useState([]);
+    const [loadingTips, setLoadingTips] = useState(false);
 
     const jumpAnimation = new Animated.Value(0);
 
@@ -21,10 +24,8 @@ const DashboardScreen = () => {
             setCurrentDate(moment().format('MMMM Do YYYY'));
             setCurrentTime(moment().format('h:mm A'));
         };
-
         updateDateTime();
         const intervalId = setInterval(updateDateTime, 1000);
-
         return () => clearInterval(intervalId);
     }, []);
 
@@ -37,40 +38,73 @@ const DashboardScreen = () => {
         ).start();
     }, []);
 
-    const translateY = jumpAnimation.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, -10],
-    });
+    const handleLogout = async () => {
+        try {
+            await AsyncStorage.removeItem('token');
+            navigation.replace('Login');
+        } catch (error) {
+            console.log('Logout error:', error);
+        }
+    };
+    const getTips = async () => {
+        setLoadingTips(true);
+        try {
+            const token = await AsyncStorage.getItem('token');
+            const res = await fetch('http://192.168.0.110:5000/get-tips', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    posture, screenTime, lastMeal, lastWater, lastNightSleep, qualitySleep, screenTimeBeforeBed
+                }),
+            });
+
+            console.log('get-tips status:', res.status);
+            const data = await res.json();
+            console.log('get-tips response:', data);
+
+            if (res.ok && data.success) {
+                setTips(Array.isArray(data.tips) ? data.tips : []);
+            } else {
+                const errMsg = data?.error || data?.message || 'Unknown error from server';
+                alert("Server error: " + errMsg);
+                console.warn('get-tips failed:', data);
+            }
+        } catch (err) {
+            console.log("Network / client error fetching tips:", err);
+            alert("Network error fetching tips. Check server is reachable and token is valid.");
+        } finally {
+            setLoadingTips(false);
+        }
+    };
+
+
+    const translateY = jumpAnimation.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
 
     const renderInputField = (label, value, setValue, placeholder, keyboardType = 'default') => (
         <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>{label}:</Text>
-            <TextInput
-                style={styles.input}
-                value={value}
-                onChangeText={setValue}
-                placeholder={placeholder}
-                keyboardType={keyboardType}
-            />
+            <TextInput style={styles.input} value={value} onChangeText={setValue} placeholder={placeholder} keyboardType={keyboardType} />
         </View>
     );
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-            {/* Top Section */}
             <View style={styles.topSection}>
                 <Text style={styles.greeting}>Hi!</Text>
                 <Text style={styles.dateTimeText}>{currentDate}</Text>
                 <Text style={styles.dateTimeText}>{currentTime}</Text>
                 <View style={styles.healthStatusContainer}>
                     <Text style={styles.healthStatusText}>Health Status: {healthStatus}</Text>
-                    <Animated.Text style={[styles.jumpingEmoji, { transform: [{ translateY }] }]}>
-                        😊
-                    </Animated.Text>
+                    <Animated.Text style={[styles.jumpingEmoji, { transform: [{ translateY }] }]}>😊</Animated.Text>
                 </View>
+                <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+                    <Text style={styles.logoutText}>Logout</Text>
+                </TouchableOpacity>
             </View>
 
-            {/* Input Fields */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Current Metrics</Text>
                 {renderInputField('Current Posture', posture, setPosture, 'e.g., Slouching, Upright')}
@@ -80,215 +114,42 @@ const DashboardScreen = () => {
                 {renderInputField('Last Night\'s Sleep (hrs)', lastNightSleep, setLastNightSleep, 'e.g., 7', 'numeric')}
                 {renderInputField('Quality Sleep (1-5)', qualitySleep, setQualitySleep, 'e.g., 4', 'numeric')}
                 {renderInputField('Screen Time Before Bed (min)', screenTimeBeforeBed, setScreenTimeBeforeBed, 'e.g., 30', 'numeric')}
-            </View>
 
-            {/* Immediate Consequences */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Immediate Consequences</Text>
-                <Text style={styles.consequenceText}>
-                    Based on your inputs, you might experience:
-                </Text>
-                <Text style={styles.consequenceItem}>- Neck pain from slouching</Text>
-                <Text style={styles.consequenceItem}>- Eye strain from excessive screen time</Text>
-                <Text style={styles.consequenceItem}>- Reduced concentration</Text>
-                <Text style={styles.consequenceItem}>- Increased stress levels</Text>
-                {/* Add more dynamic consequences based on actual input values */}
-            </View>
-
-            {/* Quick Fixes with Tasks */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Quick Fixes & Tasks</Text>
-                <TouchableOpacity style={styles.taskItem}>
-                    <Text style={styles.taskText}>1. Take a 5-minute stretch break</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.taskItem}>
-                    <Text style={styles.taskText}>2. Drink a glass of water</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.taskItem}>
-                    <Text style={styles.taskText}>3. Look away from your screen every 20 minutes</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.taskItem}>
-                    <Text style={styles.taskText}>4. Stand up and walk around for 2 minutes</Text>
+                <TouchableOpacity style={styles.taskItem} onPress={getTips}>
+                    <Text style={styles.taskText}>Get Personalized Tips</Text>
                 </TouchableOpacity>
             </View>
 
-            {/* Tomorrow's Forecast */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Tomorrow's Forecast</Text>
-                <Text style={styles.forecastText}>
-                    If current habits continue, tomorrow you may feel more fatigued and less productive.
-                    Focus on improving your sleep and posture for a better day.
-                </Text>
-            </View>
-
-            {/* Long-Term Effects */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Long-Term Effects</Text>
-                <Text style={styles.effectText}>
-                    Prolonged poor posture can lead to chronic back issues.
-                    Excessive screen time without breaks can harm vision and contribute to digital eye strain.
-                    Poor sleep habits can impact cognitive function and overall well-being.
-                </Text>
-            </View>
-
-            {/* Suggestions (Healthy Habits) */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Suggestions (Healthy Habits)</Text>
-                <Text style={styles.suggestionItem}>- Regular exercise (30 mins, 3-5 times/week)</Text>
-                <Text style={styles.suggestionItem}>- Maintain a balanced diet</Text>
-                <Text style={styles.suggestionItem}>- Practice mindful breaks from screens</Text>
-                <Text style={styles.suggestionItem}>- Establish a consistent sleep schedule</Text>
-                <Text style={styles.suggestionItem}>- Stay hydrated throughout the day</Text>
-            </View>
-
-            {/* Prediction Accuracy */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Prediction Accuracy</Text>
-                <Text style={styles.accuracyText}>
-                    Our predictions are based on general health guidelines and your provided inputs.
-                    For personalized advice, consult a healthcare professional.
-                </Text>
-                <Text style={styles.accuracyValue}>Current Accuracy: ~75% (improving with more data)</Text>
+                <Text style={styles.sectionTitle}>Personalized Tips</Text>
+                {loadingTips && <ActivityIndicator size="small" color="#3498db" />}
+                {tips && tips.map((tip, idx) => (
+                    <Text key={idx} style={styles.suggestionItem}>- {tip}</Text>
+                ))}
             </View>
         </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f0f4f7',
-    },
-    contentContainer: {
-        padding: 20,
-        paddingBottom: 50,
-    },
-    topSection: {
-        backgroundColor: '#ffffff',
-        borderRadius: 15,
-        padding: 20,
-        marginBottom: 20,
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3.84,
-        elevation: 5,
-    },
-    greeting: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 5,
-    },
-    dateTimeText: {
-        fontSize: 18,
-        color: '#666',
-    },
-    healthStatusContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    healthStatusText: {
-        fontSize: 20,
-        fontWeight: '600',
-        color: '#28a745',
-        marginRight: 5,
-    },
-    jumpingEmoji: {
-        fontSize: 24,
-    },
-    section: {
-        backgroundColor: '#ffffff',
-        borderRadius: 15,
-        padding: 20,
-        marginBottom: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3.84,
-        elevation: 5,
-    },
-    sectionTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-        paddingBottom: 10,
-    },
-    inputGroup: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 15,
-    },
-    inputLabel: {
-        fontSize: 16,
-        color: '#555',
-        width: 150, // Fixed width for labels for alignment
-    },
-    input: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        padding: 10,
-        fontSize: 16,
-        color: '#333',
-    },
-    consequenceText: {
-        fontSize: 16,
-        color: '#666',
-        marginBottom: 10,
-        lineHeight: 22,
-    },
-    consequenceItem: {
-        fontSize: 15,
-        color: '#e74c3c',
-        marginBottom: 5,
-        marginLeft: 10,
-    },
-    taskItem: {
-        backgroundColor: '#e9f7ef',
-        padding: 12,
-        borderRadius: 10,
-        marginBottom: 10,
-        borderLeftWidth: 5,
-        borderLeftColor: '#28a745',
-    },
-    taskText: {
-        fontSize: 16,
-        color: '#333',
-        fontWeight: '500',
-    },
-    forecastText: {
-        fontSize: 16,
-        color: '#666',
-        lineHeight: 22,
-    },
-    effectText: {
-        fontSize: 16,
-        color: '#666',
-        lineHeight: 22,
-    },
-    suggestionItem: {
-        fontSize: 15,
-        color: '#4682b4',
-        marginBottom: 5,
-        marginLeft: 10,
-    },
-    accuracyText: {
-        fontSize: 16,
-        color: '#666',
-        marginBottom: 5,
-    },
-    accuracyValue: {
-        fontSize: 15,
-        fontWeight: 'bold',
-        color: '#3498db',
-    },
+    container: { flex: 1, backgroundColor: '#f0f4f7' },
+    contentContainer: { padding: 20, paddingBottom: 50 },
+    topSection: { backgroundColor: '#fff', borderRadius: 15, padding: 20, marginBottom: 20, alignItems: 'center', elevation: 5 },
+    greeting: { fontSize: 32, fontWeight: 'bold', color: '#333', marginBottom: 5 },
+    dateTimeText: { fontSize: 18, color: '#666' },
+    healthStatusContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+    healthStatusText: { fontSize: 20, fontWeight: '600', color: '#28a745', marginRight: 5 },
+    jumpingEmoji: { fontSize: 24 },
+    logoutButton: { marginTop: 15, backgroundColor: '#e63946', paddingVertical: 10, paddingHorizontal: 25, borderRadius: 10 },
+    logoutText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+    section: { backgroundColor: '#fff', borderRadius: 15, padding: 20, marginBottom: 20, elevation: 5 },
+    sectionTitle: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 },
+    inputGroup: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+    inputLabel: { fontSize: 16, color: '#555', width: 150 },
+    input: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 16, color: '#333' },
+    taskItem: { backgroundColor: '#e9f7ef', padding: 12, borderRadius: 10, marginBottom: 10, borderLeftWidth: 5, borderLeftColor: '#28a745' },
+    taskText: { fontSize: 16, color: '#333', fontWeight: '500' },
+    suggestionItem: { fontSize: 15, color: '#4682b4', marginBottom: 5, marginLeft: 10 },
 });
 
 export default DashboardScreen;
