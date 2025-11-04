@@ -8,16 +8,12 @@ const Groq = require("groq-sdk").Groq;
 
 dotenv.config();
 const app = express();
-
 app.use(cors({ origin: "*", methods: ["GET", "POST"] }));
 app.use(express.json());
-
-// MongoDB connection
-mongoose
-    .connect(process.env.MONGO_URI || "mongodb://127.0.0.1:27017/healthpredictor", {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-    })
+mongoose.connect(process.env.MONGO_URI || "mongodb://127.0.0.1:2017/healthpredictor", {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
     .then(() => console.log("MongoDB connected"))
     .catch((err) => console.log("MongoDB error:", err));
 
@@ -91,7 +87,7 @@ function verifyToken(req, res, next) {
     });
 }
 
-// Dashboard protected
+// Dashboard
 app.get("/dashboard", verifyToken, (req, res) => {
     res.json({ message: "Welcome to dashboard", user: req.user });
 });
@@ -102,23 +98,51 @@ app.post("/get-tips", verifyToken, async (req, res) => {
 
     try {
         const { posture, screenTime, lastMeal, lastWater, lastNightSleep, qualitySleep, screenTimeBeforeBed } = req.body;
-
         const prompt = `
+Based on the following user metrics, generate a comprehensive health report.
 User metrics:
-Posture: ${posture}
-Screen Time: ${screenTime} hrs
-Last Meal: ${lastMeal} hrs ago
-Last Water: ${lastWater} mins ago
-Last Night's Sleep: ${lastNightSleep} hrs
-Sleep Quality: ${qualitySleep}/5
-Screen Time Before Bed: ${screenTimeBeforeBed} mins
+- Posture: ${posture}
+- Screen Time: ${screenTime} hrs
+- Last Meal: ${lastMeal} hrs ago
+- Last Water: ${lastWater} mins ago
+- Last Night's Sleep: ${lastNightSleep} hrs
+- Sleep Quality: ${qualitySleep}/5
+- Screen Time Before Bed: ${screenTimeBeforeBed} mins
 
-Give 3 personalized tips for health and posture in structured JSON:
+Please provide the report in the following structured JSON format.
+- "alerts": Give a "Risk", "Moderate", or "Good" level for each key metric.
+- "generalizedTips": 3 general health tips.
+- "nearFutureRisks": 1-sentence risk for each category.
+- "potentialFutureDiseases": List of 3-4 potential long-term diseases.
+- "quickFixes": 3 immediate, actionable fixes.
+
 {
-  "tips": [
-    "Tip 1",
-    "Tip 2",
-    "Tip 3"
+  "alerts": {
+    "posture": { "level": "Risk", "message": "Your reported posture is a high risk for back and neck pain." },
+    "screenTime": { "level": "Moderate", "message": "Your screen time is moderate, but ensure you take breaks." },
+    "hydration": { "level": "Risk", "message": "Going ${lastWater} mins without water leads to dehydration." },
+    "sleep": { "level": "Risk", "message": "Sleeping only ${lastNightSleep} hours with quality ${qualitySleep}/5 is a major health risk." }
+  },
+  "generalizedTips": [
+    "Aim for 7-9 hours of quality sleep each night.",
+    "Incorporate a 30-minute walk into your daily routine.",
+    "Try to eat a balanced diet rich in fruits and vegetables."
+  ],
+  "nearFutureRisks": {
+    "physical": "You are at immediate risk of eye strain, headaches, and back stiffness.",
+    "mental": "Expect reduced focus, mental fatigue, and potential irritability from poor sleep.",
+    "overall": "Your overall productivity and energy levels are likely to be significantly reduced."
+  },
+  "potentialFutureDiseases": [
+    "Chronic Back Pain",
+    "Digital Eye Strain Syndrome",
+    "Insomnia / Sleep Disorders",
+    "Metabolic issues from sedentary habits"
+  ],
+  "quickFixes": [
+    "Stand up, stretch your back and neck, and walk around for 2 minutes right now.",
+    "Drink a full glass of water immediately to rehydrate.",
+    "Use the 20-20-20 rule: Every 20 minutes, look at something 20 feet away for 20 seconds."
   ]
 }
 `;
@@ -129,41 +153,44 @@ Give 3 personalized tips for health and posture in structured JSON:
         }
 
         const response = await groq.chat.completions.create({
-            //model: "llama3-8b-8192",
-            model: "moonshotai/kimi-k2-instruct",
+            model: "llama3-8b-8192", // Switched model
             messages: [
-                { role: "system", content: "You are a helpful health assistant. Return only valid JSON." },
+                { role: "system", content: "You are a helpful health assistant. You must return ONLY a valid JSON object matching the user's requested structure. Do not include any markdown formatting like ```json or any text outside the JSON object." },
                 { role: "user", content: prompt },
             ],
+            temperature: 0.7,
+            response_format: { type: "json_object" }, // Enforce JSON output
         });
 
         console.log("=== Raw Groq response ===", response);
 
-        // Extract output
         let output;
         if (response?.choices?.[0]?.message?.content) output = response.choices[0].message.content;
         else output = JSON.stringify(response);
 
         console.log("=== Groq output content ===", output);
 
-        let tips = [];
+        let healthReport = {};
         try {
-            const parsed = JSON.parse(output.match(/\{[\s\S]*\}/)[0]);
-            tips = Array.isArray(parsed.tips) ? parsed.tips : [];
+            let jsonString = output;
+            if (!output.trim().startsWith('{')) {
+                jsonString = output.match(/\{[\s\S]*\}/)[0]; // Fallback regex
+            }
+            healthReport = JSON.parse(jsonString);
         } catch (err) {
             console.error("JSON parse failed:", err);
+            console.error("Raw output that failed parsing:", output); // Log the bad output
             return res.status(500).json({ success: false, error: "Invalid JSON from model", details: err.message });
         }
 
-        console.log("=== Tips parsed ===", tips);
-        return res.json({ success: true, tips });
+        console.log("=== Health Report parsed ===", healthReport);
+        return res.json({ success: true, healthReport: healthReport });
 
     } catch (err) {
         console.error("Groq /get-tips error:", err);
         return res.status(500).json({ success: false, error: err.message });
     }
 });
-
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));

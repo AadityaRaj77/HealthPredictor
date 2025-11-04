@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Animated, ActivityIndicator, Platform } from 'react-native';
 import moment from 'moment';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -14,7 +14,8 @@ const DashboardScreen = ({ navigation }) => {
     const [lastNightSleep, setLastNightSleep] = useState('');
     const [qualitySleep, setQualitySleep] = useState('');
     const [screenTimeBeforeBed, setScreenTimeBeforeBed] = useState('');
-    const [tips, setTips] = useState([]);
+
+    const [healthReport, setHealthReport] = useState(null);
     const [loadingTips, setLoadingTips] = useState(false);
 
     const jumpAnimation = new Animated.Value(0);
@@ -32,8 +33,16 @@ const DashboardScreen = ({ navigation }) => {
     useEffect(() => {
         Animated.loop(
             Animated.sequence([
-                Animated.timing(jumpAnimation, { toValue: 1, duration: 150, useNativeDriver: true }),
-                Animated.timing(jumpAnimation, { toValue: 0, duration: 150, useNativeDriver: true }),
+                Animated.timing(jumpAnimation, {
+                    toValue: 1,
+                    duration: 150,
+                    useNativeDriver: Platform.OS !== 'web' // Fix for web warning
+                }),
+                Animated.timing(jumpAnimation, {
+                    toValue: 0,
+                    duration: 150,
+                    useNativeDriver: Platform.OS !== 'web' // Fix for web warning
+                }),
             ])
         ).start();
     }, []);
@@ -46,11 +55,13 @@ const DashboardScreen = ({ navigation }) => {
             console.log('Logout error:', error);
         }
     };
+
     const getTips = async () => {
         setLoadingTips(true);
+        setHealthReport(null); // Clear old report
         try {
             const token = await AsyncStorage.getItem('token');
-            const res = await fetch('http://192.168.0.110:5000/get-tips', {
+            const res = await fetch('[http://10.107.38.208:5000/get-tips](http://10.107.38.208:5000/get-tips)', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -62,11 +73,18 @@ const DashboardScreen = ({ navigation }) => {
             });
 
             console.log('get-tips status:', res.status);
-            const data = await res.json();
+            const rawText = await res.text();
+            console.log("===== RAW SERVER RESPONSE START =====");
+            console.log(rawText);
+            console.log("===== RAW SERVER RESPONSE END =====");
+            const data = JSON.parse(rawText);
             console.log('get-tips response:', data);
 
             if (res.ok && data.success) {
-                setTips(Array.isArray(data.tips) ? data.tips : []);
+                setHealthReport(data.healthReport || null);
+                if (!data.healthReport) {
+                    alert('Received an empty report from the server.');
+                }
             } else {
                 const errMsg = data?.error || data?.message || 'Unknown error from server';
                 alert("Server error: " + errMsg);
@@ -74,12 +92,11 @@ const DashboardScreen = ({ navigation }) => {
             }
         } catch (err) {
             console.log("Network / client error fetching tips:", err);
-            alert("Network error fetching tips. Check server is reachable and token is valid.");
+            alert("Network error fetching tips. Check console for raw response.");
         } finally {
             setLoadingTips(false);
         }
     };
-
 
     const translateY = jumpAnimation.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
 
@@ -87,6 +104,56 @@ const DashboardScreen = ({ navigation }) => {
         <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>{label}:</Text>
             <TextInput style={styles.input} value={value} onChangeText={setValue} placeholder={placeholder} keyboardType={keyboardType} />
+        </View>
+    );
+
+    const getAlertColor = (level) => {
+        if (!level) return '#555'; // Default
+        const lowerLevel = level.toLowerCase();
+        if (lowerLevel === 'risk') return '#e63946'; // Red
+        if (lowerLevel === 'moderate') return '#f4a261'; // Orange
+        if (lowerLevel === 'good') return '#2a9d8f'; // Green
+        return '#555';
+    };
+
+    const renderAlerts = (alerts) => (
+        <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Alerts</Text>
+            {Object.keys(alerts).map((key) => (
+                <View key={key} style={[styles.alertBox, { borderLeftColor: getAlertColor(alerts[key].level) }]}>
+                    <Text style={styles.alertTitle}>{key.charAt(0).toUpperCase() + key.slice(1)}:
+                        <Text style={{ color: getAlertColor(alerts[key].level), fontWeight: 'bold' }}> {alerts[key].level}</Text>
+                    </Text>
+                    <Text style={styles.alertMessage}>{alerts[key].message}</Text>
+                </View>
+            ))}
+        </View>
+    );
+
+    const renderListSection = (title, items) => (
+        <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{title}</Text>
+            {items.map((item, idx) => (
+                <Text key={idx} style={styles.suggestionItem}>- {item}</Text>
+            ))}
+        </View>
+    );
+
+    const renderRisks = (risks) => (
+        <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Near Future Risks</Text>
+            <View style={styles.riskContainer}>
+                <Text style={styles.riskLabel}>Physical:</Text>
+                <Text style={styles.riskText}>{risks.physical}</Text>
+            </View>
+            <View style={styles.riskContainer}>
+                <Text style={styles.riskLabel}>Mental:</Text>
+                <Text style={styles.riskText}>{risks.mental}</Text>
+            </View>
+            <View style={styles.riskContainer}>
+                <Text style={styles.riskLabel}>Overall:</Text>
+                <Text style={styles.riskText}>{risks.overall}</Text>
+            </View>
         </View>
     );
 
@@ -115,18 +182,23 @@ const DashboardScreen = ({ navigation }) => {
                 {renderInputField('Quality Sleep (1-5)', qualitySleep, setQualitySleep, 'e.g., 4', 'numeric')}
                 {renderInputField('Screen Time Before Bed (min)', screenTimeBeforeBed, setScreenTimeBeforeBed, 'e.g., 30', 'numeric')}
 
-                <TouchableOpacity style={styles.taskItem} onPress={getTips}>
-                    <Text style={styles.taskText}>Get Personalized Tips</Text>
+                <TouchableOpacity style={styles.taskItem} onPress={getTips} disabled={loadingTips}>
+                    <Text style={styles.taskText}>{loadingTips ? 'Analyzing...' : 'Get Personalized Tips'}</Text>
                 </TouchableOpacity>
             </View>
 
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Personalized Tips</Text>
-                {loadingTips && <ActivityIndicator size="small" color="#3498db" />}
-                {tips && tips.map((tip, idx) => (
-                    <Text key={idx} style={styles.suggestionItem}>- {tip}</Text>
-                ))}
-            </View>
+            {/* --- NEW DYNAMIC CONTENT --- */}
+            {loadingTips && <ActivityIndicator size="large" color="#3498db" style={{ marginVertical: 20 }} />}
+
+            {healthReport && !loadingTips && (
+                <>
+                    {healthReport.alerts && renderAlerts(healthReport.alerts)}
+                    {healthReport.quickFixes && renderListSection('Quick Fixes', healthReport.quickFixes)}
+                    {healthReport.nearFutureRisks && renderRisks(healthReport.nearFutureRisks)}
+                    {healthReport.potentialFutureDiseases && renderListSection('Potential Future Diseases', healthReport.potentialFutureDiseases)}
+                    {healthReport.generalizedTips && renderListSection('Generalized Tips', healthReport.generalizedTips)}
+                </>
+            )}
         </ScrollView>
     );
 };
@@ -149,7 +221,38 @@ const styles = StyleSheet.create({
     input: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, fontSize: 16, color: '#333' },
     taskItem: { backgroundColor: '#e9f7ef', padding: 12, borderRadius: 10, marginBottom: 10, borderLeftWidth: 5, borderLeftColor: '#28a745' },
     taskText: { fontSize: 16, color: '#333', fontWeight: '500' },
-    suggestionItem: { fontSize: 15, color: '#4682b4', marginBottom: 5, marginLeft: 10 },
+    suggestionItem: { fontSize: 15, color: '#4682b4', marginBottom: 5, marginLeft: 10, lineHeight: 22 },
+    alertBox: {
+        backgroundColor: '#f8f9fa',
+        padding: 15,
+        borderRadius: 10,
+        marginBottom: 10,
+        borderLeftWidth: 5,
+        elevation: 2,
+    },
+    alertTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 3,
+    },
+    alertMessage: {
+        fontSize: 15,
+        color: '#555',
+    },
+    riskContainer: {
+        marginBottom: 10,
+    },
+    riskLabel: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#34495e',
+    },
+    riskText: {
+        fontSize: 15,
+        color: '#555',
+        paddingLeft: 10,
+    },
 });
 
 export default DashboardScreen;

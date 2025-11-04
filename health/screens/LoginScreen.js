@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityInd
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const BASE_URL = "http://192.168.0.110:5000";
+const BASE_URL = "http://10.107.38.208:5000";
 
 export default function LoginScreen({ navigation }) {
     const [username, setUsername] = useState("");
